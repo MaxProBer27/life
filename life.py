@@ -1,5 +1,4 @@
 import pyglet
-import random as r
 from pyglet.shapes import Rectangle
 
 class GameOfLife():
@@ -15,12 +14,25 @@ class GameOfLife():
             super().__init__(x, y, width, height, color, batch, group)
             self.i = 0
             self.j = 0
+            self.original_color = color
         
         def reset_color(self,dt):
             self.color = self.original_color
         
-        def live(self):
-            return self.color == (255,255,255)
+        def alive(self):
+            return self.color == (255,255,255,255)
+        
+        def born(self):
+            self.color = (255,255,255,255)
+        
+        def dies(self):
+            self.color = self.original_color
+        
+        def change(self):
+            if self.alive():
+                self.dies()
+            else:
+                self.born()
 
     def make_recs(self):
         Recs = [[self.Rectangles(x = w*self.distance,y = h*self.distance,
@@ -32,22 +44,37 @@ class GameOfLife():
         for i in range(len(Recs)):
             for j in range(len(Recs[i])):
                 Recs[i][j].i = i
-                Recs[i][j].i = j
+                Recs[i][j].j = j
                 recs.append(Recs[i][j])
-        self.recs = recs
+        return recs
+        
+    def set_recs(self):
+        self.recs = self.make_recs()
+    
 
-    def live_neighboors(self, i, j):
-        nb_colors = [rec.color for rec in self.recs if (any(rec.i == i + x for x in (1,-1)) or
-                                                        any(rec.j == j + x for x in (1,-1)))]
-        tot = 0
-        for color in nb_colors:
-            if color == (255,255,255):
-                tot += 1
-        return tot
+    def live_neighboors(self, ind):
+        nb = [rec.alive() for rec in self.recs if (any(rec.i == self.recs[ind].i + x for x in (1,-1,0)) and
+                                                   any(rec.j == self.recs[ind].j + x for x in (1,-1,0)))
+                                                   and rec != self.recs[ind]]
+        return sum(nb)
+    
+    def run(self):
+        while any(rec.alive() for rec in self.recs):
+            new_recs = self.make_recs()
+            for rec in self.recs:
+                if rec.alive():
+                    if not (2 <= self.live_neighboors(self.recs.index(rec)) <= 3):
+                        new_recs[self.recs.index(rec)].dies()
+                    else:
+                        new_recs[self.recs.index(rec)].born()
+                else:
+                    if self.live_neighboors(self.recs.index(rec)) == 3:
+                        new_recs[self.recs.index(rec)].born()
+            self.recs = new_recs
+            self.window.draw(0.1)
 
-
-game = GameOfLife(40,39)
-game.make_recs()
+game = GameOfLife(60,59, fullscreen=True)
+game.set_recs()
 
 @game.window.event
 def on_draw():
@@ -59,7 +86,7 @@ def on_draw():
 def on_mouse_press(x,y,button,modifier):
     for rec in game.recs:
             if (rec.x < x < rec.x + game.size) and (rec.y < y < rec.y + game.size):
-                rec.color = (255,255,255)
+                rec.change()
     pass
 
 @game.window.event
@@ -67,8 +94,7 @@ def on_key_press(symbol, modifier):
     if symbol == pyglet.window.key.ESCAPE:
         game.window.close()
     elif symbol == pyglet.window.key.SPACE:
-        for rec in game.recs:
-            rec.color = (30,30,30)
+        game.run()
     pass
 
 pyglet.app.run()
