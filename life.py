@@ -1,4 +1,7 @@
 import pyglet
+import numpy as np
+import scipy as sp
+import time
 from pyglet.shapes import Rectangle
 
 class GameOfLife():
@@ -16,9 +19,6 @@ class GameOfLife():
             self.j = 0
             self.original_color = color
         
-        def reset_color(self,dt):
-            self.color = self.original_color
-        
         def alive(self):
             return self.color == (255,255,255,255)
         
@@ -27,53 +27,63 @@ class GameOfLife():
         
         def dies(self):
             self.color = self.original_color
-        
+
         def change(self):
             if self.alive():
                 self.dies()
             else:
                 self.born()
 
-    def make_recs(self):
-        Recs = [[self.Rectangles(x = w*self.distance,y = h*self.distance,
+    def set_recs(self):
+        recs = [[self.Rectangles(x = w*self.distance,y = h*self.distance,
                             width=self.size, height=self.size,
                             batch = self.batch)
                             for w in range(self.window.width//self.distance)]
                             for h in range(self.window.height//self.distance)]
-        recs = []
-        for i in range(len(Recs)):
-            for j in range(len(Recs[i])):
-                Recs[i][j].i = i
-                Recs[i][j].j = j
-                recs.append(Recs[i][j])
-        return recs
-        
-    def set_recs(self):
-        self.recs = self.make_recs()
-    
+        self.recs = recs
 
-    def live_neighboors(self, ind):
-        nb = [rec.alive() for rec in self.recs if (any(rec.i == self.recs[ind].i + x for x in (1,-1,0)) and
-                                                   any(rec.j == self.recs[ind].j + x for x in (1,-1,0)))
-                                                   and rec != self.recs[ind]]
-        return sum(nb)
+    def set_cells(self):
+        cells = np.zeros((self.window.height//self.distance,self.window.width//self.distance))
+        for i in range(len(self.recs)):
+            for j in range(len(self.recs[i])):
+                cells[i,j] = int(self.recs[i][j].alive())
+        self.cells = cells
+
+    def reset_recs(self):
+        for i in range(len(self.recs)):
+            for j in range(len(self.recs[i])):
+                if self.cells[i][j] == 1:
+                    self.recs[i][j].born()
+                else:
+                    self.recs[i][j].dies()
+
+    def live_neighboors(self):
+        kernel = np.array([[1, 1, 1],
+                           [1, 0, 1],
+                           [1, 1, 1]])
+        return sp.signal.convolve2d(self.cells, kernel, mode='same')
     
     def run(self):
-        while any(rec.alive() for rec in self.recs):
-            new_recs = self.make_recs()
-            for rec in self.recs:
-                if rec.alive():
-                    if not (2 <= self.live_neighboors(self.recs.index(rec)) <= 3):
-                        new_recs[self.recs.index(rec)].dies()
+        new_cells = np.zeros(1)
+        while True:
+            new_cells = np.copy(self.cells)
+            neighboors = self.live_neighboors()
+            for i in range(len(self.cells)):
+                for j in range(len(self.cells[i])):
+                    if self.cells[i,j] == 1:
+                        if neighboors[i,j] not in [2,3]:
+                            new_cells[i,j] = 0
                     else:
-                        new_recs[self.recs.index(rec)].born()
-                else:
-                    if self.live_neighboors(self.recs.index(rec)) == 3:
-                        new_recs[self.recs.index(rec)].born()
-            self.recs = new_recs
+                        if neighboors[i,j] == 3:
+                            new_cells[i,j] = 1
+            if (self.cells == new_cells).all():
+                break
+            self.cells = new_cells
+            self.reset_recs()
             self.window.draw(0.1)
+            time.sleep(0.05)
 
-game = GameOfLife(60,59, fullscreen=True)
+game = GameOfLife(20,19, fullscreen=True)
 game.set_recs()
 
 @game.window.event
@@ -84,16 +94,17 @@ def on_draw():
 
 @game.window.event
 def on_mouse_press(x,y,button,modifier):
-    for rec in game.recs:
-            if (rec.x < x < rec.x + game.size) and (rec.y < y < rec.y + game.size):
-                rec.change()
-    pass
+    for i in range(len(game.recs)):
+        for j in range(len(game.recs[i])):
+            if (game.recs[i][j].x < x < game.recs[i][j].x + game.size) and (game.recs[i][j].y < y < game.recs[i][j].y + game.size):
+                game.recs[i][j].change()
 
 @game.window.event
 def on_key_press(symbol, modifier):
     if symbol == pyglet.window.key.ESCAPE:
         game.window.close()
     elif symbol == pyglet.window.key.SPACE:
+        game.set_cells()
         game.run()
     pass
 
